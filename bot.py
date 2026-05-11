@@ -1,6 +1,7 @@
 import os
 import time
 import asyncio
+from aiohttp import web
 from pytube import YouTube
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -43,16 +44,38 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(filename):
             os.remove(filename)
 
+async def webhook(request):
+    """هندل کردن درخواست‌های وب‌هوک"""
+    app = request.app
+    await app.update._process_update(await request.json())
+    return web.Response()
+
 async def main():
+    # ساخت اپلیکیشن
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
     
     await application.initialize()
     await application.bot.set_webhook(WEBHOOK_URL)
-    await application.start()
+    
+    # ساخت سرور aiohttp
+    app = web.Application()
+    app['bot'] = application.bot
+    app['update'] = application
+    app.router.add_post('/webhook', webhook)
+    
+    # گرفتن پورت از محیط
+    port = int(os.environ.get('PORT', 8080))
     
     print(f"✅ وب‌هوک فعال شد: {WEBHOOK_URL}")
+    print(f"🌐 سرور روی پورت {port} اجرا شد")
+    
+    # اجرای سرور
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
     
     # نگه داشتن سرور
     while True:
