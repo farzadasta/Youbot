@@ -6,7 +6,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 # خواندن توکن و آدرس وب‌هوک از متغیرهای محیطی
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-WEBHOOK_URL = os.environ.get('https://youbot-64ua.onrender.com')  # مثال: https://mybot.onrender.com
+WEBHOOK_URL = os.environ.get('74.220.50.0/24
+74.220.58.0/24')  # مثال: https://mybot.onrender.com
 
 if not TOKEN:
     raise ValueError("متغیر محیطی TELEGRAM_BOT_TOKEN تعریف نشده است")
