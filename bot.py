@@ -1,12 +1,18 @@
 import os
 import time
+import asyncio
 from pytube import YouTube
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
+# خواندن توکن و آدرس وب‌هوک از متغیرهای محیطی
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+
 if not TOKEN:
     raise ValueError("متغیر محیطی TELEGRAM_BOT_TOKEN تعریف نشده است")
+if not WEBHOOK_URL:
+    raise ValueError("متغیر محیطی WEBHOOK_URL تعریف نشده است")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("سلام! لینک ویدیوی یوتیوب را بفرستید تا برای شما دانلود کنم.")
@@ -38,9 +44,31 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(filename):
             os.remove(filename)
 
-if __name__ == '__main__':
+def main():
+    # ایجاد حلقه رویداد جدید برای پایتون ۳.۱۴
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # ساخت اپلیکیشن
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
-    print("✅ ربات با موفقیت روشن شد و در حال انتظار برای پیام‌هاست...")
-    application.run_polling()
+
+    # تنظیم پورت (Render پورت را از متغیر PORT می‌خواند)
+    port = int(os.environ.get('PORT', 8080))
+    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
+    
+    print(f"✅ شروع وب‌هوک روی پورت {port} با آدرس {webhook_url}")
+    
+    # اجرای وب‌هوک در حلقه رویداد
+    loop.run_until_complete(application.initialize())
+    loop.run_until_complete(application.updater.start_webhook(
+        listen='0.0.0.0',
+        port=port,
+        url_path=TOKEN,
+        webhook_url=webhook_url
+    ))
+    loop.run_forever()
+
+if __name__ == '__main__':
+    main()
