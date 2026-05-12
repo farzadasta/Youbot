@@ -1,20 +1,14 @@
-import os
+import asyncio
 import logging
-from flask import Flask, request
+from aiohttp import web
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-
-# توکن مستقیم
 TOKEN = "8690667258:AAEynP9DJpq-7Psl_sPt_QdJ-lLExl9ST1I"
 WEBHOOK_URL = "https://youbot-64ua.onrender.com/webhook"
-
-logger.info(f"TOKEN: {TOKEN}")
-logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
 bot_app = None
 
@@ -43,25 +37,28 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    bot_app.update_queue.put(update)
-    return 'ok'
+async def webhook(request):
+    bot = request.app['bot']
+    update = Update.de_json(await request.json(), bot)
+    await request.app['application'].update_queue.put(update)
+    return web.Response()
+
+async def on_startup(app):
+    app['application'] = ApplicationBuilder().token(TOKEN).build()
+    app['bot'] = app['application'].bot
+    
+    app['application'].add_handler(CommandHandler("start", start))
+    app['application'].add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
+    
+    await app['bot'].set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook set to: {WEBHOOK_URL}")
 
 if __name__ == '__main__':
-    logger.info("Building bot...")
-    bot_app = ApplicationBuilder().token(TOKEN).build()
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
+    app = web.Application()
+    app['bot'] = None
+    app['application'] = None
     
-    logger.info("Setting webhook...")
-    bot_app.run_webhook(
-        listen='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
-        url_path='',
-        webhook_url=WEBHOOK_URL
-    )
+    app.router.add_post('/webhook', webhook)
+    app.on_startup.append(on_startup)
     
-    logger.info("Starting Flask...")
-    app.run(host='0.0.0.0', port=5000)
+    web.run_app(app, host='0.0.0.0', port=5000)
