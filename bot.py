@@ -5,7 +5,9 @@ import yt_dlp
 
 app = Flask(__name__)
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+# مستقیم توی کد
+TOKEN = "8690667258:AAEynP9DJpq-7Psl_sPt_QdJ-lLExl9ST1I"
+
 bot = TeleBot(TOKEN)
 
 @app.route(f"/{TOKEN}", methods=["POST"])
