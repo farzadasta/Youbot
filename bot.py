@@ -21,7 +21,7 @@ def home():
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "سلام! لینک یوتیوب بفرست تا دانلود کنم 🎥")
+    bot.reply_to(message, "سلام! لینک یوتیوب بفرست 🎥")
 
 @bot.message_handler(func=lambda m: True)
 def download(message):
