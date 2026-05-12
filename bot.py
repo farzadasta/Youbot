@@ -1,83 +1,55 @@
 import os
-import time
 import asyncio
+import logging
 from aiohttp import web
-from pytube import YouTube
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-if not TOKEN:
-    raise ValueError("متغیر محیطی TELEGRAM_BOT_TOKEN تعریف نشده است")
-if not WEBHOOK_URL:
-    raise ValueError("متغیر محیطی WEBHOOK_URL تعریف نشده است")
+logger.info(f"TOKEN: {TOKEN}")
+logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! لینک ویدیوی یوتیوب را بفرستید تا برای شما دانلود کنم.")
-
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    if not ('youtube.com' in url or 'youtu.be' in url):
-        await update.message.reply_text("❌ لطفاً یک لینک معتبر یوتیوب بفرستید.")
-        return
-
-    status_msg = await update.message.reply_text("⏳ در حال دانلود... لطفاً صبر کنید.")
-    filename = f"video_{update.effective_chat.id}_{int(time.time())}.mp4"
-
-    try:
-        yt = YouTube(url)
-        stream = yt.streams.get_highest_resolution()
-        if not stream:
-            await update.message.reply_text("❌ ویدیویی یافت نشد.")
-            return
-
-        stream.download(output_path='.', filename=filename)
-        with open(filename, 'rb') as f:
-            await update.message.reply_video(f, caption=f"🎬 {yt.title}\n👤 {yt.author}")
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {e}")
-    finally:
-        if os.path.exists(filename):
-            os.remove(filename)
+    await update.message.reply_text("سلام! لینک یوتیوب بفرست.")
 
 async def webhook(request):
-    """هندل کردن درخواست‌های وب‌هوک"""
-    app = request.app
-    await app.update._process_update(await request.json())
+    logger.info("Webhook received!")
+    try:
+        app = request.app
+        update = Update.de_json(await request.json(), app.bot)
+        await app['dispatcher'].process_update(update)
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
     return web.Response()
 
 async def main():
-    # ساخت اپلیکیشن
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+    logger.info("Starting bot...")
     
-    await application.initialize()
-    await application.bot.set_webhook(WEBHOOK_URL)
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
     
-    # ساخت سرور aiohttp
-    app = web.Application()
-    app['bot'] = application.bot
-    app['update'] = application
-    app.router.add_post('/webhook', webhook)
+    await app.initialize()
+    await app.bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook set to: {WEBHOOK_URL}")
     
-    # گرفتن پورت از محیط
+    server = web.Application()
+    server['dispatcher'] = app
+    server.router.add_post('/webhook', webhook)
+    
     port = int(os.environ.get('PORT', 8080))
+    logger.info(f"Starting server on port {port}")
     
-    print(f"✅ وب‌هوک فعال شد: {WEBHOOK_URL}")
-    print(f"🌐 سرور روی پورت {port} اجرا شد")
-    
-    # اجرای سرور
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(server)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
+    await web.TCPSite(runner, '0.0.0.0', port).start()
     
-    # نگه داشتن سرور
+    logger.info("Server is running!")
+    
     while True:
         await asyncio.sleep(3600)
 
