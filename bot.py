@@ -5,17 +5,20 @@ import yt_dlp
 
 app = Flask(__name__)
 
-# مستقیم توی کد
-TOKEN = "8690667258:AAEynP9DJpq-7Psl_sPt_QdJ-lLExl9ST1I"
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
 
 bot = TeleBot(TOKEN)
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    bot.process_new_updates(
-        [bot.update_manager.update_factory(request.get_json())]
-    )
-    return "OK"
+    if request.headers.get('content-type') == 'application/json':
+        json_str = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Bad Request", 400
 
 @app.route("/")
 def home():
@@ -29,28 +32,29 @@ def start(message):
 def download(message):
     url = message.text.strip()
     if "youtube.com" not in url and "youtu.be" not in url:
-        bot.reply_to(message, "لینک یوتیوب بفرست!")
+        bot.reply_to(message, "لطفاً یک لینک معتبر یوتیوب بفرست.")
         return
-    
-    msg = bot.reply_to(message, "⏳ دانلود میکنم...")
-    
+
+    msg = bot.reply_to(message, "⏳ در حال دانلود...")
+
     try:
         ydl_opts = {
             'format': 'best',
             'outtmpl': 'video.mp4',
+            'quiet': True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             title = info.get('title', 'video')
-        
+
         with open('video.mp4', 'rb') as f:
             bot.send_video(message.chat.id, f, caption=title)
-        
+
         os.remove('video.mp4')
         bot.delete_message(message.chat.id, msg.message_id)
-        
+
     except Exception as e:
-        bot.reply_to(message, f"خطا: {str(e)}")
+        bot.reply_to(message, f"❌ خطا: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
