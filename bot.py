@@ -1,11 +1,20 @@
 import os
+import logging
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-TOKEN = os.environ.get('BOT_TOKEN')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+
+# توکن مستقیم
+TOKEN = "8690667258:AAEynP9DJpq-7Psl_sPt_QdJ-lLExl9ST1I"
+WEBHOOK_URL = "https://youbot-64ua.onrender.com/webhook"
+
+logger.info(f"TOKEN: {TOKEN}")
+logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
 bot_app = None
 
@@ -41,10 +50,12 @@ def webhook():
     return 'ok'
 
 if __name__ == '__main__':
+    logger.info("Building bot...")
     bot_app = ApplicationBuilder().token(TOKEN).build()
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
     
+    logger.info("Setting webhook...")
     bot_app.run_webhook(
         listen='0.0.0.0',
         port=int(os.environ.get('PORT', 5000)),
@@ -52,4 +63,5 @@ if __name__ == '__main__':
         webhook_url=WEBHOOK_URL
     )
     
+    logger.info("Starting Flask...")
     app.run(host='0.0.0.0', port=5000)
