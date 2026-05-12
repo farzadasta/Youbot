@@ -1,57 +1,55 @@
 import os
-import asyncio
-import logging
-from aiohttp import web
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+app = Flask(__name__)
+TOKEN = os.environ.get('BOT_TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-logger.info(f"TOKEN: {TOKEN}")
-logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+bot_app = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("سلام! لینک یوتیوب بفرست.")
 
-async def webhook(request):
-    logger.info("Webhook received!")
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text.strip()
+    if 'youtube' not in url:
+        await update.message.reply_text("لینک یوتیوب بفرست!")
+        return
+    
+    msg = await update.message.reply_text("⏳ دانلود...")
+    
     try:
-        app = request.app
-        update = Update.de_json(await request.json(), app.bot)
-        await app['dispatcher'].process_update(update)
+        from pytube import YouTube
+        yt = YouTube(url)
+        video = yt.streams.get_highest_resolution()
+        video.download(filename='video.mp4')
+        
+        with open('video.mp4', 'rb') as f:
+            await update.message.reply_video(f, caption=yt.title)
+        
+        os.remove('video.mp4')
+        await msg.delete()
     except Exception as e:
-        logger.error(f"Error processing update: {e}")
-    return web.Response()
+        await update.message.reply_text(f"خطا: {e}")
 
-async def main():
-    logger.info("Starting bot...")
-    
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    
-    await app.initialize()
-    await app.bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook set to: {WEBHOOK_URL}")
-    
-    server = web.Application()
-    server['dispatcher'] = app
-    server.router.add_post('/webhook', webhook)
-    
-    port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Starting server on port {port}")
-    
-    runner = web.AppRunner(server)
-    await runner.setup()
-    await web.TCPSite(runner, '0.0.0.0', port).start()
-    
-    logger.info("Server is running!")
-    
-    while True:
-        await asyncio.sleep(3600)
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    bot_app.update_queue.put(update)
+    return 'ok'
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    bot_app = ApplicationBuilder().token(TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
+    
+    bot_app.run_webhook(
+        listen='0.0.0.0',
+        port=int(os.environ.get('PORT', 5000)),
+        url_path='',
+        webhook_url=WEBHOOK_URL
+    )
+    
+    app.run(host='0.0.0.0', port=5000)
