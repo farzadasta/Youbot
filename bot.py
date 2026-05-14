@@ -5,7 +5,7 @@ from pytube import YouTube
 
 # دریافت توکن از متغیر محیطی (برای اجرا در هاست)
 # اگر متغیر محیطی تعریف نشده بود، از توکن پیش‌فرض استفاده می‌کند (فقط برای تست محلی)
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8690667258:AAEynP9DJpq-7Psl_sPt_QdJ-lLExl9ST1I')
 
 # ساخت ربات
 bot = telebot.TeleBot(TOKEN)
