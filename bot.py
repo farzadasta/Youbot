@@ -1,61 +1,83 @@
-from flask import Flask, request
-from telebot import TeleBot
 import os
-import yt_dlp
+import time
+import telebot
+from pytube import YouTube
 
-app = Flask(__name__)
+# دریافت توکن از متغیر محیطی (برای اجرا در هاست)
+# اگر متغیر محیطی تعریف نشده بود، از توکن پیش‌فرض استفاده می‌کند (فقط برای تست محلی)
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
+# ساخت ربات
+bot = telebot.TeleBot(TOKEN)
 
-bot = TeleBot(TOKEN)
+# پیام خوش‌آمدگویی
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    bot.reply_to(
+        message,
+        "سلام! 👋\n\n"
+        "من یک ربات دانلودر از یوتیوب هستم.\n"
+        "کافی است لینک یک ویدیو از یوتیوب را برای من بفرستید.\n"
+        "من آن را با بهترین کیفیت ممکن دانلود کرده و برایتان ارسال می‌کنم.\n\n"
+        "⚠️ توجه: حجم ویدیو نباید بیشتر از 50 مگابایت باشد (محدودیت تلگرام)."
+    )
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return "OK", 200
-    return "Bad Request", 400
-
-@app.route("/")
-def home():
-    return "Bot is running!"
-
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "سلام! لینک یوتیوب بفرست 🎥")
-
+# مدیریت پیام‌های دریافتی (لینک یوتیوب)
 @bot.message_handler(func=lambda m: True)
-def download(message):
+def download_video(message):
     url = message.text.strip()
-    if "youtube.com" not in url and "youtu.be" not in url:
-        bot.reply_to(message, "لطفاً یک لینک معتبر یوتیوب بفرست.")
-        return
 
-    msg = bot.reply_to(message, "⏳ در حال دانلود...")
+    # بررسی معتبر بودن لینک یوتیوب
+    if 'youtube.com' in url or 'youtu.be' in url:
+        # پیام وضعیت دانلود
+        status_msg = bot.reply_to(message, "📥 در حال دریافت اطلاعات ویدیو... لطفاً صبر کنید ⏳")
 
-    try:
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': 'video.mp4',
-            'quiet': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'video')
+        # ساخت نام فایل یکتا (بر اساس chat_id و زمان جاری)
+        filename = f"video_{message.chat.id}_{int(time.time())}.mp4"
 
-        with open('video.mp4', 'rb') as f:
-            bot.send_video(message.chat.id, f, caption=title)
+        try:
+            # دریافت ویدیو از یوتیوب
+            yt = YouTube(url)
+            # انتخاب بهترین کیفیت ممکن
+            stream = yt.streams.get_highest_resolution()
+            # دانلود فایل
+            stream.download(output_path='.', filename=filename)
 
-        os.remove('video.mp4')
-        bot.delete_message(message.chat.id, msg.message_id)
+            # ویرایش پیام وضعیت
+            bot.edit_message_text(
+                "✅ دانلود کامل شد! در حال ارسال ویدیو...",
+                chat_id=message.chat.id,
+                message_id=status_msg.message_id
+            )
 
-    except Exception as e:
-        bot.reply_to(message, f"❌ خطا: {str(e)}")
+            # ارسال ویدیو به کاربر
+            with open(filename, 'rb') as video_file:
+                bot.send_video(
+                    message.chat.id,
+                    video_file,
+                    caption=f"🎬 {yt.title}\n\n👤 کانال: {yt.author}",
+                    supports_streaming=True
+                )
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+            # پاک کردن پیام وضعیت
+            bot.delete_message(message.chat.id, status_msg.message_id)
+
+        except Exception as e:
+            # در صورت بروز خطا، به کاربر اطلاع بده
+            bot.edit_message_text(
+                f"❌ خطا در دانلود:\n{str(e)}",
+                chat_id=message.chat.id,
+                message_id=status_msg.message_id
+            )
+        finally:
+            # حذف فایل ویدیو از روی دیسک (حتی اگر خطا رخ داده باشد)
+            if os.path.exists(filename):
+                os.remove(filename)
+    else:
+        # اگر لینک معتبر نبود
+        bot.reply_to(message, "❌ لطفاً یک لینک معتبر از یوتیوب ارسال کنید.\n\nمثال:\nhttps://youtu.be/...\nhttps://www.youtube.com/watch?v=...")
+
+# اجرای ربات
+if __name__ == '__main__':
+    print("🚀 ربات روشن شد...")
+    bot.infinity_polling()
