@@ -1,2 +1,2 @@
-python-telegram-bot
-pytube
+pyTelegramBotAPI==4.16.1
+pytube==15.0.0
